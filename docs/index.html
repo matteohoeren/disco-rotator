@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disco Rotator</title>
+<style>
+  :root {
+    --bg:       #0a0a0f;
+    --surface:  #13131a;
+    --border:   #2a2a3a;
+    --accent:   #7c3aed;
+    --accent2:  #a855f7;
+    --glow:     #7c3aedaa;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --radius:   14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 48px;
+    gap: 20px;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .disco-icon {
+    width: 48px; height: 48px;
+    background: radial-gradient(circle at 40% 35%, #fff 2px, transparent 3px),
+                radial-gradient(circle at 70% 25%, #f0f 2px, transparent 3px),
+                radial-gradient(circle at 55% 65%, #0ff 2px, transparent 3px),
+                radial-gradient(circle at 25% 60%, #ff0 2px, transparent 3px),
+                radial-gradient(circle at 80% 70%, #0f0 2px, transparent 3px),
+                linear-gradient(135deg, #444 0%, #222 100%);
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    animation: spin 8s linear infinite paused;
+  }
+  .disco-icon.spinning { animation-play-state: running; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p  { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Card ───────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .card-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* ── Connect button ──────────────────────────────────────── */
+  #btnConnect {
+    width: 100%;
+    max-width: 480px;
+    padding: 14px;
+    border-radius: var(--radius);
+    border: none;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 20px var(--glow);
+  }
+  #btnConnect:hover { background: var(--accent2); }
+  #btnConnect:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+  #btnConnect.connected {
+    background: #1a1a2a;
+    border: 1px solid var(--red);
+    color: var(--red);
+    box-shadow: none;
+  }
+
+  /* ── Status pill ─────────────────────────────────────────── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .pill.disconnected { border-color: var(--border); color: var(--muted); }
+  .pill.connected    { border-color: var(--green); color: var(--green); background: #22c55e18; }
+  .pill .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .pill.connected .dot { animation: pulse 1.5s ease infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+
+  #statusText {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-family: 'Courier New', monospace;
+  }
+
+  /* ── Enable toggle ───────────────────────────────────────── */
+  .big-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .big-toggle label { font-size: 1rem; font-weight: 600; }
+  .big-toggle small { display: block; font-size: 0.75rem; color: var(--muted); }
+
+  .toggle-switch {
+    position: relative;
+    width: 56px; height: 30px;
+    flex-shrink: 0;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-switch .track {
+    position: absolute; inset: 0;
+    border-radius: 999px;
+    background: var(--border);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .toggle-switch .track::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
+  }
+  .toggle-switch input:checked + .track { background: var(--accent); }
+  .toggle-switch input:checked + .track::after { transform: translateX(26px); }
+  .toggle-switch input:disabled + .track { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── Speed slider ────────────────────────────────────────── */
+  .speed-display {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .speed-display .value {
+    font-size: 2.4rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--accent2);
+  }
+  .speed-display .unit { font-size: 0.85rem; color: var(--muted); }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--glow);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
+  input[type=range]:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Speed bar ───────────────────────────────────────────── */
+  .speed-bar-wrap {
+    margin-top: 14px;
+    background: var(--border);
+    border-radius: 999px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .speed-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.25s ease;
+    width: 0%;
+  }
+  .speed-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Direction ───────────────────────────────────────────── */
+  .dir-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .dir-btn {
+    padding: 14px;
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .dir-btn .arrow { font-size: 1.6rem; line-height: 1; }
+  .dir-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .dir-btn.active {
+    border-color: var(--accent2);
+    background: #7c3aed22;
+    color: var(--accent2);
+    box-shadow: 0 0 12px var(--glow);
+  }
+  .dir-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── Auto mode ───────────────────────────────────────────── */
+  .auto-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .auto-info { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Log panel ───────────────────────────────────────────── */
+  #logPanel {
+    width: 100%;
+    max-width: 480px;
+  }
+  #logPanel summary {
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 0;
+    user-select: none;
+  }
+  #logPanel summary:hover { color: var(--text); }
+  #logBox {
+    background: #060608;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 6px;
+  }
+  #logBox .entry { padding: 1px 0; border-bottom: 1px solid #ffffff08; }
+  #logBox .entry:last-child { border: none; }
+  #logBox .ts { color: var(--accent); margin-right: 6px; }
+  .controls { display: contents; }
+  .controls.disabled .card:not(.always) { opacity: 0.5; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="disco-icon" id="discoIcon"></div>
+  <div>
+    <h1>Disco Rotator</h1>
+    <p>BLE Motor Controller</p>
+  </div>
+</header>
+
+<!-- BLE support warning -->
+<div id="bleWarning" style="
+  display:none;
+  width:100%; max-width:480px;
+  background:#3b1010;
+  border:1px solid #7f1d1d;
+  border-radius:var(--radius);
+  padding:16px 18px;
+  font-size:0.88rem;
+  line-height:1.6;
+  color:#fca5a5;
+"></div>
+
+<!-- Connect -->
+<button id="btnConnect">Connect to DiscoRotator</button>
+
+<!-- Status -->
+<div class="card always">
+  <div class="card-title">Status</div>
+  <div class="status-row">
+    <div class="pill disconnected" id="connPill">
+      <span class="dot"></span>
+      <span id="connLabel">Disconnected</span>
+    </div>
+    <span id="statusText">—</span>
+  </div>
+  <!-- Live speed bar (from notify) -->
+  <div class="speed-bar-wrap" style="margin-top:14px">
+    <div class="speed-bar-fill" id="liveBar"></div>
+  </div>
+  <div class="speed-bar-label">
+    <span>Current speed</span>
+    <span id="liveSpeedLabel">0 sps</span>
+  </div>
+</div>
+
+<div class="controls" id="controls">
+
+  <!-- Enable -->
+  <div class="card">
+    <div class="card-title">Motor</div>
+    <div class="big-toggle">
+      <div>
+        <label>Power</label>
+        <small>Enable or stop the motor</small>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggleEnable" disabled>
+        <span class="track"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Speed -->
+  <div class="card">
+    <div class="card-title">Speed</div>
+    <div class="speed-display">
+      <span class="value" id="speedValue">400</span>
+      <span class="unit">steps / sec</span>
+    </div>
+    <input type="range" id="sliderSpeed" min="50" max="20000" value="400" step="50" disabled>
+    <div class="range-labels"><span>50</span><span>20 000</span></div>
+  </div>
+
+  <!-- Direction -->
+  <div class="card">
+    <div class="card-title">Direction</div>
+    <div class="dir-buttons">
+      <button class="dir-btn active" id="btnCW" disabled>
+        <span class="arrow">↻</span>
+        <span>Clockwise</span>
+      </button>
+      <button class="dir-btn" id="btnCCW" disabled>
+        <span class="arrow">↺</span>
+        <span>Counter-CW</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Auto mode -->
+  <div class="card">
+    <div class="card-title">Auto Mode</div>
+    <div class="auto-row">
+      <div>
+        <label style="font-size:1rem;font-weight:600">Automatic</label>
+        <div class="auto-info">Randomly varies speed &amp; direction every 45–180s</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggleAuto" disabled>
+        <span class="track"></span>
+      </label>
+    </div>
+  </div>
+
+</div><!-- /controls -->
+
+<!-- Log panel -->
+<details id="logPanel">
+  <summary>&#9654; Debug Log</summary>
+  <div id="logBox"></div>
+</details>
+
+<script>
+// ── Logging ──────────────────────────────────────────────────────────────────
+const logBox = document.getElementById('logBox');
+function log(msg) {
+  console.log(msg);
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const el  = document.createElement('div');
+  el.className = 'entry';
+  el.innerHTML = `<span class="ts">${ts}</span>${escHtml(msg)}`;
+  logBox.appendChild(el);
+  // Keep last 200 entries
+  while (logBox.children.length > 200) logBox.removeChild(logBox.firstChild);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Browser support check ────────────────────────────────────────────────────
+function checkBLESupport() {
+  if (!navigator.bluetooth) {
+    const isIOS     = /ipad|iphone|ipod/i.test(navigator.userAgent);
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const isFirefox = /firefox/i.test(navigator.userAgent);
+    const isSamsung = /samsungbrowser/i.test(navigator.userAgent);
+    const isHTTP    = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+    const isFile    = location.protocol === 'file:';
+
+    let msg = '';
+    if (isFile || isHTTP) {
+      msg = `<strong>⚠️ Requires HTTPS</strong><br><br>
+             Web Bluetooth only works in a <em>secure context</em> (HTTPS or localhost).<br>
+             You are on <code>${location.protocol}//${location.host || 'file'}</code>.<br><br>
+             <strong>Quickest fix — run this in your terminal:</strong><br>
+             <code style="display:block;margin:8px 0;padding:8px;background:#000;border-radius:6px;font-size:0.8rem">
+               npx serve webapp/<br>
+               # then open the https:// URL it gives you
+             </code>
+             Or use <a href="https://ngrok.com" target="_blank" style="color:var(--accent2)">ngrok</a> / 
+             <a href="https://tunnelmole.com" target="_blank" style="color:var(--accent2)">tunnelmole</a> 
+             to create a public HTTPS URL from your machine.`;
+    } else if (isIOS) {
+      msg = `<strong>⚠️ iOS not supported</strong><br><br>
+             Safari and Chrome on iOS block Web Bluetooth (Apple restriction).<br><br>
+             Use the <a href="https://apps.apple.com/app/bluefy/id1492822055" target="_blank" style="color:var(--accent2)">Bluefy browser</a> on iPhone/iPad — it adds Web Bluetooth support.`;
+    } else if (isFirefox) {
+      msg = `<strong>⚠️ Firefox not supported</strong><br><br>
+             Firefox does not implement Web Bluetooth.<br>
+             Open this page in <strong>Chrome</strong>.`;
+    } else if (isSamsung) {
+      msg = `<strong>⚠️ Samsung Internet not supported</strong><br><br>
+             Open this page in <strong>Chrome for Android</strong>.`;
+    } else if (isAndroid) {
+      msg = `<strong>⚠️ Browser not supported</strong><br><br>
+             Open this page in <strong>Chrome for Android</strong>.`;
+    } else {
+      msg = `<strong>⚠️ Web Bluetooth unavailable</strong><br><br>
+             Use <strong>Chrome</strong> on desktop or Android, served over HTTPS or localhost.`;
+    }
+
+    document.getElementById('bleWarning').innerHTML = msg;
+    document.getElementById('bleWarning').style.display = 'block';
+    btnConnect.disabled = true;
+    log('Web Bluetooth unavailable — protocol=' + location.protocol + ' host=' + location.hostname);
+    return false;
+  }
+  return true;
+}
+checkBLESupport();
+
+// ── UUIDs ────────────────────────────────────────────────────────────────────
+const SVC   = '12345678-1234-5678-1234-56789abcdef0';
+const UUID  = {
+  speed:  '12345678-1234-5678-1234-56789abcdef1',
+  dir:    '12345678-1234-5678-1234-56789abcdef2',
+  enable: '12345678-1234-5678-1234-56789abcdef3',
+  status: '12345678-1234-5678-1234-56789abcdef4',
+  auto:   '12345678-1234-5678-1234-56789abcdef5',
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let device = null, server = null, chars = {};
+let speedSendTimer = null;
+const SPEED_MAX_DISPLAY = 20000;
+
+// ── DOM ──────────────────────────────────────────────────────────────────────
+const btnConnect   = document.getElementById('btnConnect');
+const connPill     = document.getElementById('connPill');
+const connLabel    = document.getElementById('connLabel');
+const statusText   = document.getElementById('statusText');
+const liveBar      = document.getElementById('liveBar');
+const liveSpeedLbl = document.getElementById('liveSpeedLabel');
+const discoIcon    = document.getElementById('discoIcon');
+const toggleEnable = document.getElementById('toggleEnable');
+const sliderSpeed  = document.getElementById('sliderSpeed');
+const speedValue   = document.getElementById('speedValue');
+const btnCW        = document.getElementById('btnCW');
+const btnCCW       = document.getElementById('btnCCW');
+const toggleAuto   = document.getElementById('toggleAuto');
+const controls     = document.getElementById('controls');
+
+// ── Connect / disconnect ─────────────────────────────────────────────────────
+btnConnect.addEventListener('click', async () => {
+  if (!checkBLESupport()) return;
+  if (device && device.gatt.connected) {
+    device.gatt.disconnect();
+    return;
+  }
+  try {
+    btnConnect.disabled = true;
+    btnConnect.textContent = 'Scanning…';
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'DiscoRotator' }],
+      optionalServices: [SVC],
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    chars.speed  = await svc.getCharacteristic(UUID.speed);
+    chars.dir    = await svc.getCharacteristic(UUID.dir);
+    chars.enable = await svc.getCharacteristic(UUID.enable);
+    chars.status = await svc.getCharacteristic(UUID.status);
+    chars.auto   = await svc.getCharacteristic(UUID.auto);
+
+    await chars.status.startNotifications();
+    chars.status.addEventListener('characteristicvaluechanged', onStatus);
+
+    onConnected();
+    log('Connected to ' + device.name);
+  } catch (e) {
+    console.error(e);
+    btnConnect.disabled = false;
+    btnConnect.textContent = 'Connect to DiscoRotator';
+    if (e.name !== 'NotFoundError') alert('Connection failed: ' + e.message);
+  }
+});
+
+function onConnected() {
+  connPill.className = 'pill connected';
+  connLabel.textContent = 'Connected';
+  btnConnect.disabled = false;
+  btnConnect.className = 'connected';
+  btnConnect.textContent = 'Disconnect';
+  setControlsEnabled(true);
+  discoIcon.classList.add('spinning');
+}
+
+function onDisconnected() {
+  log('Disconnected');
+  chars = {};
+  connPill.className = 'pill disconnected';
+  connLabel.textContent = 'Disconnected';
+  statusText.textContent = '—';
+  btnConnect.className = '';
+  btnConnect.textContent = 'Connect to DiscoRotator';
+  setControlsEnabled(false);
+  discoIcon.classList.remove('spinning');
+  liveBar.style.width = '0%';
+  liveSpeedLbl.textContent = '0 sps';
+}
+
+// ── Status notify ────────────────────────────────────────────────────────────
+function onStatus(e) {
+  // NimBLE setValue() includes a null terminator — strip it and any other
+  // non-printable bytes before decoding.
+  const bytes = new Uint8Array(e.target.value.buffer);
+  const clean = bytes.filter(b => b >= 0x20 && b < 0x7f);
+  const raw   = new TextDecoder().decode(clean);
+
+  statusText.textContent = raw;
+
+  log(`notify raw bytes: [${Array.from(bytes).map(b=>'0x'+b.toString(16).padStart(2,'0')).join(', ')}]`);
+  log(`notify decoded:   "${raw}"`);
+
+  // Parse formats: "stopped" | "cw:400" | "ccw:400" | "auto:cw:400" | "auto:ccw:400"
+  let sps = 0;
+  let isCCW = null;
+
+  if (raw === 'stopped') {
+    log('parse → stopped');
+  } else {
+    // Extract trailing number
+    const mSpeed = raw.match(/(\d+)/g);
+    if (mSpeed && mSpeed.length > 0) {
+      sps = parseInt(mSpeed[mSpeed.length - 1]);
+    }
+    // Extract direction
+    if (raw.includes('ccw')) isCCW = true;
+    else if (raw.includes('cw')) isCCW = false;
+
+    log(`parse → sps=${sps} ccw=${isCCW} auto=${raw.startsWith('auto')}`);
+  }
+
+  const pct = Math.min(100, (sps / SPEED_MAX_DISPLAY) * 100);
+  liveBar.style.width = pct + '%';
+  liveSpeedLbl.textContent = sps + ' sps';
+
+  if (sps > 0) {
+    const dur = Math.max(0.5, 8 - (sps / SPEED_MAX_DISPLAY) * 7);
+    discoIcon.style.animationDuration = dur + 's';
+  }
+
+  if (isCCW !== null) setDirUI(isCCW);
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+toggleEnable.addEventListener('change', async () => {
+  await writeUint8(chars.enable, toggleEnable.checked ? 1 : 0);
+  if (!toggleEnable.checked) {
+    liveBar.style.width = '0%';
+    liveSpeedLbl.textContent = '0 sps';
+    discoIcon.classList.remove('spinning');
+  } else {
+    discoIcon.classList.add('spinning');
+  }
+});
+
+sliderSpeed.addEventListener('input', () => {
+  speedValue.textContent = sliderSpeed.value;
+  // Debounce: send 300ms after last move
+  clearTimeout(speedSendTimer);
+  speedSendTimer = setTimeout(() => sendSpeed(parseInt(sliderSpeed.value)), 300);
+});
+
+async function sendSpeed(val) {
+  const buf = new ArrayBuffer(2);
+  new DataView(buf).setUint16(0, val, true); // little-endian
+  try {
+    await chars.speed.writeValue(buf);
+    log(`write speed → ${val} sps`);
+  } catch(e) { console.warn(e); log(`speed write error: ${e.message}`); }
+}
+
+btnCW.addEventListener('click',  () => sendDir(false));
+btnCCW.addEventListener('click', () => sendDir(true));
+
+async function sendDir(ccw) {
+  setDirUI(ccw);
+  await writeUint8(chars.dir, ccw ? 1 : 0);
+}
+
+function setDirUI(ccw) {
+  btnCW.classList.toggle('active', !ccw);
+  btnCCW.classList.toggle('active', ccw);
+}
+
+toggleAuto.addEventListener('change', async () => {
+  await writeUint8(chars.auto, toggleAuto.checked ? 1 : 0);
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+async function writeUint8(char, val) {
+  if (!char) return;
+  try {
+    const buf = new Uint8Array([val]);
+    await char.writeValue(buf);
+    log(`write uint8 → ${val}`);
+  } catch(e) { console.warn(e); log(`write error: ${e.message}`); }
+}
+
+function setControlsEnabled(on) {
+  [toggleEnable, sliderSpeed, btnCW, btnCCW, toggleAuto].forEach(el => el.disabled = !on);
+  if (!on) {
+    toggleEnable.checked = false;
+    toggleAuto.checked   = false;
+    setDirUI(false);
+  }
+}
+</script>
+</body>
+</html>
