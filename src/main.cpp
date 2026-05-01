@@ -36,6 +36,8 @@
 #define BLE_ENABLE_UUID     "12345678-1234-5678-1234-56789abcdef3"
 #define BLE_STATUS_UUID     "12345678-1234-5678-1234-56789abcdef4"
 #define BLE_AUTO_UUID       "12345678-1234-5678-1234-56789abcdef5"
+#define BLE_AUTO_MIN_UUID   "12345678-1234-5678-1234-56789abcdef6"
+#define BLE_AUTO_MAX_UUID   "12345678-1234-5678-1234-56789abcdef7"
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
 AccelStepper stepper(AccelStepper::DRIVER, PIN_STEP, PIN_DIR);
@@ -44,6 +46,8 @@ volatile uint16_t targetSpeed  = SPEED_DEFAULT;
 volatile bool     motorEnabled = false;
 volatile bool     directionCCW = false;
 volatile bool     autoMode     = false;
+volatile uint16_t autoSpeedMin = 10;
+volatile uint16_t autoSpeedMax = 299;
 
 float currentSpeed = 0.0f;
 
@@ -108,11 +112,10 @@ void requestDirection(bool ccw) {
 }
 
 // ─── Auto mode ────────────────────────────────────────────────────────────────
-// Ramps between random speed targets (10–299 sps) using AUTO_ACCEL_RAMP (3 sps²),
-// so a 0→150 sps transition takes ~50 seconds — very ambient.
+// Ramps between random speed targets using AUTO_ACCEL_RAMP (3 sps²).
+// Speed range is set via BLE (autoSpeedMin / autoSpeedMax).
 // Speed is biased toward lower values: two random draws, take the min.
 // Direction may flip only after a 2-minute cooldown.
-#define AUTO_SPEED_MAX      299
 #define AUTO_DIR_COOLDOWN   120000UL  // 2 minutes in ms
 
 void autoModeUpdate() {
@@ -120,9 +123,12 @@ void autoModeUpdate() {
 
     // When currentSpeed has settled at targetSpeed, pick a new target.
     if (fabsf(currentSpeed - (float)targetSpeed) < 1.0f) {
+        uint16_t lo = autoSpeedMin;
+        uint16_t hi = autoSpeedMax;
+        if (lo >= hi) lo = (hi > 1) ? hi - 1 : 0;
         // Two draws, take the min → biased toward lower speeds
-        uint16_t a = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
-        uint16_t b = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
+        uint16_t a = (uint16_t)random(lo, hi + 1);
+        uint16_t b = (uint16_t)random(lo, hi + 1);
         targetSpeed = min(a, b);
 
         // Flip direction only if cooldown has elapsed
@@ -133,7 +139,7 @@ void autoModeUpdate() {
                 Serial.printf("[AUTO] dir flip → %s\n", !directionCCW ? "CCW" : "CW");
             }
         }
-        Serial.printf("[AUTO] new target=%u sps\n", targetSpeed);
+        Serial.printf("[AUTO] new target=%u sps (range %u-%u)\n", targetSpeed, lo, hi);
     }
 }
 
@@ -196,6 +202,32 @@ class AutoCallback : public NimBLECharacteristicCallbacks {
     }
 };
 
+class AutoMinCallback : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* c) override {
+        if (c->getDataLength() >= 2) {
+            uint16_t val = 0;
+            memcpy(&val, c->getValue().data(), 2);
+            val = constrain(val, (uint16_t)SPEED_MIN, (uint16_t)(SPEED_MAX - 1));
+            autoSpeedMin = val;
+            if (autoSpeedMin >= autoSpeedMax) autoSpeedMax = autoSpeedMin + 1;
+            Serial.printf("Auto min: %u sps\n", autoSpeedMin);
+        }
+    }
+};
+
+class AutoMaxCallback : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* c) override {
+        if (c->getDataLength() >= 2) {
+            uint16_t val = 0;
+            memcpy(&val, c->getValue().data(), 2);
+            val = constrain(val, (uint16_t)(SPEED_MIN + 1), (uint16_t)SPEED_MAX);
+            autoSpeedMax = val;
+            if (autoSpeedMax <= autoSpeedMin) autoSpeedMin = autoSpeedMax - 1;
+            Serial.printf("Auto max: %u sps\n", autoSpeedMax);
+        }
+    }
+};
+
 static void addDescription(NimBLECharacteristic* c, const char* desc) {
     NimBLEDescriptor* d = c->createDescriptor("2901", NIMBLE_PROPERTY::READ, strlen(desc) + 1);
     d->setValue(desc);
@@ -247,6 +279,18 @@ void setupBLE() {
     cAuto->setCallbacks(new AutoCallback());
     addDescription(cAuto, "Auto mode (0=manual, 1=auto)");
     uint8_t defAuto = 0; cAuto->setValue(defAuto);
+
+    auto* cAutoMin = svc->createCharacteristic(BLE_AUTO_MIN_UUID,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::READ);
+    cAutoMin->setCallbacks(new AutoMinCallback());
+    addDescription(cAutoMin, "Auto min speed (steps/sec)");
+    uint16_t defAutoMin = 10; cAutoMin->setValue(defAutoMin);
+
+    auto* cAutoMax = svc->createCharacteristic(BLE_AUTO_MAX_UUID,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::READ);
+    cAutoMax->setCallbacks(new AutoMaxCallback());
+    addDescription(cAutoMax, "Auto max speed (steps/sec)");
+    uint16_t defAutoMax = 299; cAutoMax->setValue(defAutoMax);
 
     charStatus = svc->createCharacteristic(BLE_STATUS_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);

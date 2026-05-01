@@ -421,6 +421,31 @@
         <span class="track"></span>
       </label>
     </div>
+
+    <!-- Auto speed range -->
+    <div style="margin-top:18px;display:flex;flex-direction:column;gap:14px">
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Min speed</span>
+          <span style="font-size:1.1rem;font-weight:700;color:var(--accent2);font-variant-numeric:tabular-nums">
+            <span id="autoMinValue">10</span> <span style="font-size:0.75rem;color:var(--muted)">sps</span>
+          </span>
+        </div>
+        <input type="range" id="sliderAutoMin" min="10" max="299" value="10" step="5" disabled>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.08em">Max speed</span>
+          <span style="font-size:1.1rem;font-weight:700;color:var(--accent2);font-variant-numeric:tabular-nums">
+            <span id="autoMaxValue">299</span> <span style="font-size:0.75rem;color:var(--muted)">sps</span>
+          </span>
+        </div>
+        <input type="range" id="sliderAutoMax" min="10" max="299" value="299" step="5" disabled>
+      </div>
+
+    </div>
   </div>
 
 </div><!-- /controls -->
@@ -510,6 +535,8 @@ const UUID  = {
   enable: '12345678-1234-5678-1234-56789abcdef3',
   status: '12345678-1234-5678-1234-56789abcdef4',
   auto:   '12345678-1234-5678-1234-56789abcdef5',
+  autoMin:'12345678-1234-5678-1234-56789abcdef6',
+  autoMax:'12345678-1234-5678-1234-56789abcdef7',
 };
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -531,6 +558,10 @@ const speedValue   = document.getElementById('speedValue');
 const btnCW        = document.getElementById('btnCW');
 const btnCCW       = document.getElementById('btnCCW');
 const toggleAuto   = document.getElementById('toggleAuto');
+const sliderAutoMin = document.getElementById('sliderAutoMin');
+const sliderAutoMax = document.getElementById('sliderAutoMax');
+const autoMinValue  = document.getElementById('autoMinValue');
+const autoMaxValue  = document.getElementById('autoMaxValue');
 const controls     = document.getElementById('controls');
 
 // ── Connect / disconnect ─────────────────────────────────────────────────────
@@ -555,6 +586,8 @@ btnConnect.addEventListener('click', async () => {
     chars.enable = await svc.getCharacteristic(UUID.enable);
     chars.status = await svc.getCharacteristic(UUID.status);
     chars.auto   = await svc.getCharacteristic(UUID.auto);
+    chars.autoMin = await svc.getCharacteristic(UUID.autoMin);
+    chars.autoMax = await svc.getCharacteristic(UUID.autoMax);
 
     await chars.status.startNotifications();
     chars.status.addEventListener('characteristicvaluechanged', onStatus);
@@ -657,12 +690,7 @@ sliderSpeed.addEventListener('input', () => {
 });
 
 async function sendSpeed(val) {
-  const buf = new ArrayBuffer(2);
-  new DataView(buf).setUint16(0, val, true); // little-endian
-  try {
-    await chars.speed.writeValue(buf);
-    log(`write speed → ${val} sps`);
-  } catch(e) { console.warn(e); log(`speed write error: ${e.message}`); }
+  await sendUint16(chars.speed, val, 'speed');
 }
 
 btnCW.addEventListener('click',  () => sendDir(false));
@@ -682,6 +710,32 @@ toggleAuto.addEventListener('change', async () => {
   await writeUint8(chars.auto, toggleAuto.checked ? 1 : 0);
 });
 
+let autoMinTimer = null, autoMaxTimer = null;
+
+sliderAutoMin.addEventListener('input', () => {
+  let v = parseInt(sliderAutoMin.value);
+  // Enforce min < max
+  if (v >= parseInt(sliderAutoMax.value)) {
+    v = parseInt(sliderAutoMax.value) - 5;
+    sliderAutoMin.value = v;
+  }
+  autoMinValue.textContent = v;
+  clearTimeout(autoMinTimer);
+  autoMinTimer = setTimeout(() => sendUint16(chars.autoMin, v, 'auto min'), 300);
+});
+
+sliderAutoMax.addEventListener('input', () => {
+  let v = parseInt(sliderAutoMax.value);
+  // Enforce max > min
+  if (v <= parseInt(sliderAutoMin.value)) {
+    v = parseInt(sliderAutoMin.value) + 5;
+    sliderAutoMax.value = v;
+  }
+  autoMaxValue.textContent = v;
+  clearTimeout(autoMaxTimer);
+  autoMaxTimer = setTimeout(() => sendUint16(chars.autoMax, v, 'auto max'), 300);
+});
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 async function writeUint8(char, val) {
   if (!char) return;
@@ -692,8 +746,18 @@ async function writeUint8(char, val) {
   } catch(e) { console.warn(e); log(`write error: ${e.message}`); }
 }
 
+async function sendUint16(char, val, label) {
+  if (!char) return;
+  try {
+    const buf = new ArrayBuffer(2);
+    new DataView(buf).setUint16(0, val, true);
+    await char.writeValue(buf);
+    log(`write ${label} → ${val} sps`);
+  } catch(e) { console.warn(e); log(`${label} write error: ${e.message}`); }
+}
+
 function setControlsEnabled(on) {
-  [toggleEnable, sliderSpeed, btnCW, btnCCW, toggleAuto].forEach(el => el.disabled = !on);
+  [toggleEnable, sliderSpeed, btnCW, btnCCW, toggleAuto, sliderAutoMin, sliderAutoMax].forEach(el => el.disabled = !on);
   if (!on) {
     toggleEnable.checked = false;
     toggleAuto.checked   = false;
