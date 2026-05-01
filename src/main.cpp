@@ -1,8 +1,9 @@
 /**
  * Disco Ball Rotator Firmware
  * Board  : ESP32-C3 Mini with 0.42" OLED (SSD1306-compat, 72x40, I2C)
- * Driver : BTT TMC2209 v1.2
- * Motor  : 17HS10-0704S pancake stepper
+ * Driver : BTT TMC2209 v1.2 — standalone STEP/DIR mode (no UART)
+ *          Current set by Vref potentiometer on board (~0.9A factory default)
+ *          MS1=GND, MS2=GND → 8 microsteps (1600 steps/rev)
  *
  * Confirmed pin assignments (researched from 01Space board schematics):
  *   OLED SDA = GPIO5, OLED SCL = GPIO6
@@ -20,7 +21,6 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <AccelStepper.h>
-#include <TMCStepper.h>
 #include <NimBLEDevice.h>
 
 // ─── Pin assignments ──────────────────────────────────────────────────────────
@@ -31,17 +31,10 @@
 // Onboard LED (active LOW)
 #define PIN_LED       8
 
-// TMC2209 step/dir/enable
+// TMC2209 step/dir/enable — standalone STEP/DIR mode
 #define PIN_STEP      0   // GPIO0
 #define PIN_DIR       1   // GPIO1
-#define PIN_EN        2   // GPIO2  (active LOW on TMC2209)
-
-// TMC2209 UART – half-duplex on UART1
-// Connect GPIO3 → TMC2209 PDN_UART via 1kΩ resistor
-#define TMC_UART_TX   3
-#define TMC_UART_RX   3
-#define TMC_UART_PORT Serial1
-#define TMC_ADDR      0
+#define PIN_EN        2   // GPIO2 (active LOW on TMC2209)
 
 // ─── OLED config ─────────────────────────────────────────────────────────────
 // The 0.42" SSD1306 on this board has a 72x40 physical display but reports
@@ -58,8 +51,8 @@
 U8G2_SSD1306_72X40_ER_F_HW_I2C u8g2(U8G2_R0, /* reset= */ U8X8_PIN_NONE);
 
 // ─── Motor / driver config ────────────────────────────────────────────────────
-#define MOTOR_RMS_MA        500    // 17HS10-0704S is 0.7A/phase; start conservative
-#define MICROSTEPS          8      // 1600 steps/rev
+// Standalone mode: no UART, current set by Vref pot on TMC2209 board
+// MS1=GND, MS2=GND → 8 microsteps hardware-selected
 #define STEPS_PER_REV       (200 * MICROSTEPS)
 
 #define SPEED_MIN           50
@@ -75,13 +68,11 @@ U8G2_SSD1306_72X40_ER_F_HW_I2C u8g2(U8G2_R0, /* reset= */ U8X8_PIN_NONE);
 #define BLE_STATUS_UUID     "12345678-1234-5678-1234-56789abcdef4"
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
-TMC2209Stepper driver(&TMC_UART_PORT, 0.11f, TMC_ADDR);
 AccelStepper stepper(AccelStepper::DRIVER, PIN_STEP, PIN_DIR);
 
 volatile uint16_t targetSpeed  = SPEED_DEFAULT;
 volatile bool     motorEnabled = false;
 volatile bool     directionCCW = false;
-bool              driverOk     = false;
 
 NimBLEServer*         bleServer  = nullptr;
 NimBLECharacteristic* charStatus = nullptr;
@@ -92,15 +83,12 @@ unsigned long lastOledUpdate = 0;
 
 // ─── Motor state application ──────────────────────────────────────────────────
 void applyMotorState() {
-    if (!driverOk || !motorEnabled) {
+    if (!motorEnabled) {
         stepper.stop();
         stepper.setSpeed(0);
-        digitalWrite(PIN_EN, HIGH);
-        if (motorEnabled && !driverOk) {
-            Serial.println("Motor enable ignored: TMC2209 not detected");
-        }
+        digitalWrite(PIN_EN, HIGH);  // disable coils
     } else {
-        digitalWrite(PIN_EN, LOW);
+        digitalWrite(PIN_EN, LOW);   // enable coils
         float speed = (float)targetSpeed;
         if (directionCCW) speed = -speed;
         stepper.setMaxSpeed(fabsf(speed));
@@ -120,10 +108,8 @@ void updateOled() {
     // Row 2 (y=18): BLE status
     u8g2.drawStr(0, 18, bleConnected ? "BLE: CONN" : "BLE: WAIT");
 
-    // Row 3 (y=28): motor / driver state
-    if (!driverOk) {
-        u8g2.drawStr(0, 28, "DRV: NONE");
-    } else if (!motorEnabled) {
+    // Row 3 (y=28): motor state
+    if (!motorEnabled) {
         u8g2.drawStr(0, 28, "STOPPED");
     } else {
         char buf[16];
@@ -132,7 +118,7 @@ void updateOled() {
     }
 
     // Row 4 (y=38): speed bar when running
-    if (driverOk && motorEnabled) {
+    if (motorEnabled) {
         int barLen = map(targetSpeed, SPEED_MIN, SPEED_MAX, 0, OLED_W - 2);
         u8g2.drawFrame(0, 31, OLED_W, 7);
         u8g2.drawBox(1, 32, barLen, 5);
@@ -217,40 +203,15 @@ void setupOled() {
     }
 }
 
-void setupDriver() {
-    TMC_UART_PORT.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
-    delay(100);
-
-    driver.begin();
-    delay(50);
-
-    uint8_t ver = driver.version();
-    Serial.printf("TMC2209: version register = 0x%02X\n", ver);
-
-    if (ver == 0x21) {
-        driver.toff(5);
-        driver.rms_current(MOTOR_RMS_MA);
-        driver.microsteps(MICROSTEPS);
-        driver.en_spreadCycle(false);   // StealthChop2
-        driver.pwm_autoscale(true);
-        driverOk = true;
-        Serial.println("TMC2209: OK");
-    } else {
-        driverOk = false;
-        Serial.println("TMC2209: NOT FOUND (version mismatch) – motor disabled");
-        Serial.println("         Check wiring: GPIO3 -> 1k -> PDN_UART");
-    }
-}
-
 void setupStepper() {
     pinMode(PIN_STEP, OUTPUT);
     pinMode(PIN_DIR,  OUTPUT);
     pinMode(PIN_EN,   OUTPUT);
-    digitalWrite(PIN_EN, HIGH);  // keep disabled until driver confirmed
+    digitalWrite(PIN_EN, HIGH);  // coils off until motor enabled via BLE
     stepper.setMaxSpeed(SPEED_DEFAULT);
     stepper.setAcceleration(ACCEL_DEFAULT);
     stepper.setSpeed(0);
-    Serial.println("Stepper pins configured");
+    Serial.println("Stepper ready (standalone STEP/DIR mode)");
 }
 
 void setupBLE() {
@@ -322,7 +283,6 @@ void setup() {
     digitalWrite(PIN_LED, HIGH);  // off at boot
 
     setupOled();
-    setupDriver();
     setupStepper();
     setupBLE();
 
@@ -344,7 +304,7 @@ void sendBLEStatus() {
 }
 
 void loop() {
-    if (driverOk && motorEnabled) {
+    if (motorEnabled) {
         stepper.runSpeed();
     }
 
