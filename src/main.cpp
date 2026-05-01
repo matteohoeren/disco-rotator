@@ -26,7 +26,8 @@
 #define SPEED_MIN       10
 #define SPEED_MAX       3000
 #define SPEED_DEFAULT   400
-#define ACCEL_RAMP      200   // steps/sec² — gentle ramp (~15s full range)
+#define ACCEL_RAMP          200   // steps/sec² — manual mode ramp
+#define AUTO_ACCEL_RAMP     3     // steps/sec² — auto mode: very slow, ambient ramp
 
 // ─── BLE UUIDs ───────────────────────────────────────────────────────────────
 #define BLE_SERVICE_UUID    "12345678-1234-5678-1234-56789abcdef0"
@@ -79,7 +80,8 @@ void updateRamp() {
     float dt = (nowUs - lastUs) * 1e-6f;
     lastUs = nowUs;
 
-    float step = ACCEL_RAMP * dt;
+    float ramp = autoMode ? (float)AUTO_ACCEL_RAMP : (float)ACCEL_RAMP;
+    float step = ramp * dt;
 
     if (pendingDirFlip) {
         if (currentSpeed <= step) {
@@ -106,18 +108,22 @@ void requestDirection(bool ccw) {
 }
 
 // ─── Auto mode ────────────────────────────────────────────────────────────────
-// Continuously ramps between random speed targets (10–299 sps).
-// Direction may flip only after a 4-minute cooldown.
+// Ramps between random speed targets (10–299 sps) using AUTO_ACCEL_RAMP (3 sps²),
+// so a 0→150 sps transition takes ~50 seconds — very ambient.
+// Speed is biased toward lower values: two random draws, take the min.
+// Direction may flip only after a 2-minute cooldown.
 #define AUTO_SPEED_MAX      299
-#define AUTO_DIR_COOLDOWN   240000UL  // 4 minutes in ms
+#define AUTO_DIR_COOLDOWN   120000UL  // 2 minutes in ms
 
 void autoModeUpdate() {
     if (!autoMode || !motorEnabled) return;
 
     // When currentSpeed has settled at targetSpeed, pick a new target.
     if (fabsf(currentSpeed - (float)targetSpeed) < 1.0f) {
-        uint16_t newSpeed = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
-        targetSpeed = newSpeed;
+        // Two draws, take the min → biased toward lower speeds
+        uint16_t a = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
+        uint16_t b = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
+        targetSpeed = min(a, b);
 
         // Flip direction only if cooldown has elapsed
         if (millis() - lastDirChange >= AUTO_DIR_COOLDOWN) {
@@ -202,7 +208,7 @@ void setupStepper() {
     pinMode(PIN_EN,   OUTPUT);
     digitalWrite(PIN_EN, HIGH);
     stepper.setMaxSpeed(SPEED_MAX);
-    stepper.setAcceleration(ACCEL_RAMP);
+    stepper.setAcceleration(ACCEL_RAMP);  // used only if switching to run() API
     stepper.setSpeed(0);
     Serial.println("Stepper ready");
 }

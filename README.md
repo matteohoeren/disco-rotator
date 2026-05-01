@@ -79,7 +79,7 @@ Web Bluetooth requires HTTPS — the GitHub Pages URL works out of the box.
 | Speed slider | 10–3 000 steps/sec |
 | CW / CCW | Set rotation direction |
 | Motor power | Enable / stop the motor |
-| Auto mode | Continuously ramps between random speeds (< 300 sps); direction changes at most every 4 minutes |
+| Auto mode | Very slowly ramps between random speeds (< 300 sps, biased toward low values). Direction changes at most every 2 minutes |
 
 ---
 
