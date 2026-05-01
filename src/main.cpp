@@ -54,8 +54,9 @@ NimBLECharacteristic* charStatus   = nullptr;
 bool                  bleConnected = false;
 
 unsigned long lastStatusUpdate = 0;
-unsigned long lastAutoChange   = 0;
+unsigned long lastAutoChange   = 0;   // unused in new auto logic, kept for compat
 uint32_t      autoIntervalMs   = 60000;
+unsigned long lastDirChange    = 0;   // auto mode: direction cooldown
 
 #define STATUS_INTERVAL_MS  500
 #define RAMP_INTERVAL_US   5000
@@ -105,15 +106,29 @@ void requestDirection(bool ccw) {
 }
 
 // ─── Auto mode ────────────────────────────────────────────────────────────────
+// Continuously ramps between random speed targets (10–299 sps).
+// Direction may flip only after a 4-minute cooldown.
+#define AUTO_SPEED_MAX      299
+#define AUTO_DIR_COOLDOWN   240000UL  // 4 minutes in ms
+
 void autoModeUpdate() {
     if (!autoMode || !motorEnabled) return;
-    if (millis() - lastAutoChange < autoIntervalMs) return;
-    lastAutoChange = millis();
-    targetSpeed    = (uint16_t)random(SPEED_MIN, 800);
-    if (random(2) == 0) requestDirection(!directionCCW);
-    autoIntervalMs = (uint32_t)random(45000, 180001);
-    Serial.printf("[AUTO] speed=%u dir=%s next=%lus\n",
-        targetSpeed, directionCCW ? "CCW" : "CW", autoIntervalMs / 1000);
+
+    // When currentSpeed has settled at targetSpeed, pick a new target.
+    if (fabsf(currentSpeed - (float)targetSpeed) < 1.0f) {
+        uint16_t newSpeed = (uint16_t)random(SPEED_MIN, AUTO_SPEED_MAX + 1);
+        targetSpeed = newSpeed;
+
+        // Flip direction only if cooldown has elapsed
+        if (millis() - lastDirChange >= AUTO_DIR_COOLDOWN) {
+            if (random(2) == 0) {
+                requestDirection(!directionCCW);
+                lastDirChange = millis();
+                Serial.printf("[AUTO] dir flip → %s\n", !directionCCW ? "CCW" : "CW");
+            }
+        }
+        Serial.printf("[AUTO] new target=%u sps\n", targetSpeed);
+    }
 }
 
 // ─── BLE callbacks ────────────────────────────────────────────────────────────
@@ -165,7 +180,11 @@ class AutoCallback : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* c) override {
         if (c->getDataLength() >= 1) {
             autoMode = (c->getValue()[0] != 0);
-            if (autoMode) { lastAutoChange = millis(); autoIntervalMs = (uint32_t)random(45000, 180001); }
+            if (autoMode) {
+                lastAutoChange = millis();
+                lastDirChange  = millis();  // reset dir cooldown on enable
+                autoIntervalMs = (uint32_t)random(45000, 180001);
+            }
             Serial.printf("Auto: %s\n", autoMode ? "ON" : "OFF");
         }
     }
