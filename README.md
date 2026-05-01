@@ -1,7 +1,7 @@
 # Disco Rotator
 
 BLE-controlled stepper motor driver for a disco ball rotator.
-A single-file web app connects over Web Bluetooth and lets you control speed, direction, and an auto mode that continuously ramps the motor in slow, dreamy patterns.
+A single-file web app connects over Web Bluetooth and lets you control speed, direction, and an auto mode that continuously ramps the motor at slow speeds < 300 steps/s.
 
 **Web controller:** https://matteohoeren.github.io/disco-rotator/
 
