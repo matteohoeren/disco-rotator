@@ -23,7 +23,7 @@
 #define PIN_EN        2   // active LOW on TMC2209
 
 // ─── Motor config ─────────────────────────────────────────────────────────────
-#define SPEED_MIN       10
+#define SPEED_MIN       1
 #define SPEED_MAX       3000
 #define SPEED_DEFAULT   400
 #define ACCEL_RAMP          200   // steps/sec² — manual mode ramp
@@ -46,7 +46,7 @@ volatile uint16_t targetSpeed  = SPEED_DEFAULT;
 volatile bool     motorEnabled = false;
 volatile bool     directionCCW = false;
 volatile bool     autoMode     = false;
-volatile uint16_t autoSpeedMin = 10;
+volatile uint16_t autoSpeedMin = 1;
 volatile uint16_t autoSpeedMax = 299;
 
 float currentSpeed = 0.0f;
@@ -284,7 +284,7 @@ void setupBLE() {
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::READ);
     cAutoMin->setCallbacks(new AutoMinCallback());
     addDescription(cAutoMin, "Auto min speed (steps/sec)");
-    uint16_t defAutoMin = 10; cAutoMin->setValue(defAutoMin);
+    uint16_t defAutoMin = 1; cAutoMin->setValue(defAutoMin);
 
     auto* cAutoMax = svc->createCharacteristic(BLE_AUTO_MAX_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::READ);
